@@ -1,5 +1,7 @@
 Allgemein:
 
+        ![](image.png)
+
 		mkdir 	//Neuen Ordner erstellen
 		pwd 	//Pfad anzeigen
 		ls	//Listet alles im Verzeichnis
@@ -33,6 +35,8 @@ Git config:
 	z.B.:	~git config --alias.i init
 
 Git standard Befehle:
+
+		~git help	//Hilfe
 
 		~git init 	//Macht einen Reguleren Ordner zu einem Git Ordner	
 
