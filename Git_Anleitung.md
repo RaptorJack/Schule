@@ -1,6 +1,6 @@
 Allgemein:
 
-        ![](image.png)
+        ![alt text](image.png)
 
 		mkdir 	//Neuen Ordner erstellen
 		pwd 	//Pfad anzeigen
