@@ -19,7 +19,7 @@ Git config:
 	
 	Mit alias kann man eine Variablie bzw. abkürzung für einen befehl erstellen.
 
-		~git config --alias."Variable" "Befehl"
+		~git config --alias.<Variable> <Befehl>
 
 	z.B.:	~git config --alias.i init
 
