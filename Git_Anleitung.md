@@ -62,7 +62,7 @@ Git remote Reposetory:
 
 		~git swicht <BranchName> 		//Wechseln zwischen den Branches & auf aktuellen Commit zurück gehen
 
-		~git merge 						//Fügt Branches wieder zusammen
+		~git merge <BranchName> 		//Fügt Branches wieder zusammen
 
 		~git push origin <BranchName>	//Lädt die geänderten Datein auf das online Git-Repo.
 
