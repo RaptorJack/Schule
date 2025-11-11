@@ -70,13 +70,17 @@ Git remote Reposetory:
 		
 		~git branch						//Zeig alle Branches in dem Repo. an
 
-		~git swicht <BranchName> 		//Wechseln zwischen den Branches
+		~git swicht <BranchName> 		//Wechseln zwischen den Branches & auf aktuellen Commit zurück gehen
 
 		~git merge 						//Fügt Branches wieder zusammen
 
 		~git push origin <BranchName>	//Lädt die geänderten Datein auf das online Git-Repo.
 
 		~git pull 						//Lädt die geänderten Datein vom online Git-Repo. herunter
+
+		~git checkout <Commit-ID>		//Gehe temprär auf den commit zurück
+
+		~git reset --hard <Commit-ID>	//Dauerhaft auf Commit zurück springen
 
 GitHub Desktop installieren:
 
