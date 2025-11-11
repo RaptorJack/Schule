@@ -1,13 +1,3 @@
-Allgemein:
-
-		mkdir 							//Neuen Ordner erstellen
-		pwd 							//Pfad anzeigen
-		ls								//Listet alles im Verzeichnis
-		cd								//gehe zu Ordner
-		touch							//Erstellen einer neuen Datei
-
-
-
 Git installieren:
 
 		~sudo apt install git
@@ -92,4 +82,15 @@ GitHub Desktop installieren:
 							Github Desktop -> install
 
 	https://pi-apps.io/install-app/install-github-desktop-on-raspberry-pi/
+
+
+
+Allgemein:
+
+		mkdir 							//Neuen Ordner erstellen
+		pwd 							//Pfad anzeigen
+		ls								//Listet alles im Verzeichnis
+		cd								//gehe zu Ordner
+		touch							//Erstellen einer neuen Datei
+
 
