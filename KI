@@ -1,0 +1,346 @@
+sudo apt update
+sudo apt install python3-pip git python3-pygame
+
+git clone https://github.com/ebuc99/pacman.git
+cd pacman
+python3 pacman.py
+
+pip3 install pygame
+
+# --- BEGIN: RL HOOKS TO ADD INTO pacman.py ---
+
+# Importe, falls noch nicht vorhanden
+import pygame
+import copy
+
+# Spielzustand extrahieren — passe die Rückgabe an die tatsächliche Struktur an.
+def rl_get_state(game):
+    """
+    Gibt einen serialisierbaren Zustand zurück.
+    'game' ist die Haupt-Spielinstanz bzw. das Objekt, das Positionen/Wände/Geister enthält.
+    Rückgabe: dict mit relevanten Feldern.
+    """
+    state = {}
+    # Beispiele — passe diese Schlüssel an deine Implementierung an:
+    # game.pacman_pos, game.ghosts (Liste), game.score, game.game_map, game.powered_up
+    state['pacman_pos'] = tuple(game.pacman.pos)  # (x, y)
+    state['ghosts'] = [tuple(g.pos) for g in game.ghosts]
+    state['score'] = int(game.score)
+    state['pellets_remaining'] = int(game.count_pellets())
+    state['powered_up'] = bool(game.pacman.powered_up)
+    # optional: kleine visualisierung als np.array (siehe env)
+    return state
+
+def rl_apply_action(game, action):
+    """
+    Wendet eine Aktion an. Action als int:
+      0 = UP, 1 = RIGHT, 2 = DOWN, 3 = LEFT, 4 = NOOP
+    Diese Funktion sollte genau die Steuerung auslösen, die normalerweise
+    eine Tastatur-Event auslösen würde.
+    """
+    if action == 0:
+        game.pacman.next_direction = 'UP'
+    elif action == 1:
+        game.pacman.next_direction = 'RIGHT'
+    elif action == 2:
+        game.pacman.next_direction = 'DOWN'
+    elif action == 3:
+        game.pacman.next_direction = 'LEFT'
+    elif action == 4:
+        pass  # keine Aktion
+    # Falls dein Spiel direkt Key-presses erwartet, du kannst alternativ pygame.event.post verwenden:
+    # key_map = {0: pygame.K_UP, 1: pygame.K_RIGHT, 2: pygame.K_DOWN, 3: pygame.K_LEFT}
+    # if action in key_map:
+    #     ev = pygame.event.Event(pygame.KEYDOWN, {'key': key_map[action]})
+    #     pygame.event.post(ev)
+
+def rl_reset_game(game):
+    """
+    Setzt das Spiel zurück (neues Level / neues Spiel).
+    Implementiere das, indem du die vorhandene Reset/Init-Logik im Repo aufrufst.
+    """
+    # Beispiel: falls es eine Funktion game.reset() gibt:
+    if hasattr(game, 'reset'):
+        game.reset()
+    else:
+        # Andernfalls den gesamten Module-Level-Neustart anstoßen (falls vorhanden)
+        # Du musst das ggf. anpassen
+        raise NotImplementedError("Bitte implementiere reset-Logik in pacman.py")
+# --- END: RL HOOKS ---
+
+# pacman_env.py
+import time
+import numpy as np
+from collections import deque
+
+# Wir importieren pacman.py — passe Modulname ggf. an
+import pacman
+
+class PacmanEnv:
+    """
+    Wrapper, der das Spiel in-proc steuert via rl_get_state, rl_apply_action, rl_reset_game.
+    Observation: wir liefern ein kleines feature-array (oder später ein image).
+    Action: 0=UP,1=RIGHT,2=DOWN,3=LEFT,4=NOOP
+    """
+    def __init__(self, max_steps_per_episode=1000, render=True):
+        # Erzeuge oder referenziere die Spielinstanz. Passe an, wenn pacman
+        # eine konkrete Klasse hat, z.B. pacman.Game()
+        if hasattr(pacman, 'Game'):
+            self.game = pacman.Game()
+        else:
+            # Wenn pacman.py die Laufzeit-Instanz als `game` global hält, nutze es:
+            if hasattr(pacman, 'game'):
+                self.game = pacman.game
+            else:
+                # Manche Repos starten das Spiel direkt; du musst ggf. refactoren.
+                raise RuntimeError("Konnte Spielinstanz nicht finden. Passe pacman_env.py an.")
+        self.max_steps = max_steps_per_episode
+        self.step_count = 0
+        self.render_flag = render
+
+    def reset(self):
+        self.step_count = 0
+        pacman.rl_reset_game(self.game)
+        # kleines Warten, damit Pygame initialisiert ist
+        time.sleep(0.05)
+        return self._get_observation()
+
+    def _get_observation(self):
+        # Option A: features (positions etc.)
+        s = pacman.rl_get_state(self.game)
+        # Erzeuge flaches Feature-Array: pacman x,y, powered, score, pellets_rem
+        px, py = s['pacman_pos']
+        ghosts = s['ghosts']
+        gx = [g[0] for g in ghosts] if ghosts else [0,0,0,0]
+        gy = [g[1] for g in ghosts] if ghosts else [0,0,0,0]
+        obs = np.array([px, py] + gx[:4] + gy[:4] + [int(s['powered_up']), s['pellets_remaining'], s['score']], dtype=np.float32)
+        # Normierung optional
+        return obs
+
+    def step(self, action):
+        # action: int
+        pacman.rl_apply_action(self.game, int(action))
+        # Lasse genau ein Frame / Tick laufen — depends on pacman loop integration.
+        # Ich nehme an, pacman hat eine Funktion update() oder die loop verarbeitet die Events bei pygame.display.flip().
+        # Falls das Spiel autonom läuft in seinem main loop, du musst stattdessen sicherstellen,
+        # dass step() genau ein Spiel-Update triggert.
+        if hasattr(self.game, 'update'):
+            self.game.update()
+        else:
+            # Fallback: poste ein kleines pygame:event, dann kurz warten
+            import pygame
+            pygame.event.pump()
+            time.sleep(0.02)
+
+        obs = self._get_observation()
+
+        # Reward-Logik (Beispiel):
+        s = pacman.rl_get_state(self.game)
+        reward = 0.0
+        # Belohne Score-Änderung
+        reward += s['score'] - getattr(self, '_last_score', 0)
+        self._last_score = s['score']
+        # Strafpunkte, falls gestorben (falls game has attribute)
+        done = False
+        if hasattr(self.game, 'pacman') and getattr(self.game.pacman, 'dead', False):
+            reward -= 50
+            done = True
+
+        self.step_count += 1
+        if self.step_count >= self.max_steps:
+            done = True
+
+        info = {}
+        return obs, reward, done, info
+
+    def render(self, mode='human'):
+        # Das Pygame Fenster rendert bereits — nichts nötig.
+        pass
+
+    def close(self):
+        # evtl. Ressourcen freigeben
+        pass
+# dqn_agent.py
+import random
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from collections import deque, namedtuple
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class QNetwork(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, output_dim)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
+
+class ReplayBuffer:
+    def __init__(self, capacity=50000):
+        self.buffer = deque(maxlen=capacity)
+
+    def push(self, *args):
+        self.buffer.append(Transition(*args))
+
+    def sample(self, batch_size):
+        batch = random.sample(self.buffer, batch_size)
+        return Transition(*zip(*batch))
+
+    def __len__(self):
+        return len(self.buffer)
+
+class DQNAgent:
+    def __init__(self, state_dim, action_dim, lr=1e-3, gamma=0.99, batch_size=64, buffer_size=50000, tau=1e-3):
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.gamma = gamma
+        self.batch_size = batch_size
+        self.tau = tau
+
+        self.q_net = QNetwork(state_dim, action_dim).to(device)
+        self.target_net = QNetwork(state_dim, action_dim).to(device)
+        self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
+
+        self.replay = ReplayBuffer(buffer_size)
+        self.update_target_network(hard=True)
+        self.steps = 0
+
+    def update_target_network(self, hard=False):
+        if hard:
+            self.target_net.load_state_dict(self.q_net.state_dict())
+        else:
+            for target_param, param in zip(self.target_net.parameters(), self.q_net.parameters()):
+                target_param.data.copy_(self.tau * param.data + (1.0 - self.tau) * target_param.data)
+
+    def act(self, state, eps=0.1):
+        state_v = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        if random.random() < eps:
+            return random.randrange(self.action_dim)
+        with torch.no_grad():
+            qvals = self.q_net(state_v)
+            return int(torch.argmax(qvals, dim=1).item())
+
+    def store(self, state, action, reward, next_state, done):
+        self.replay.push(state, action, reward, next_state, done)
+
+    def learn(self):
+        if len(self.replay) < self.batch_size:
+            return 0.0
+        batch = self.replay.sample(self.batch_size)
+        states = torch.tensor(batch.state, dtype=torch.float32, device=device)
+        actions = torch.tensor(batch.action, dtype=torch.int64, device=device).unsqueeze(1)
+        rewards = torch.tensor(batch.reward, dtype=torch.float32, device=device).unsqueeze(1)
+        next_states = torch.tensor(batch.next_state, dtype=torch.float32, device=device)
+        dones = torch.tensor(batch.done, dtype=torch.float32, device=device).unsqueeze(1)
+
+        q_values = self.q_net(states).gather(1, actions)
+        with torch.no_grad():
+            next_q = self.target_net(next_states).max(1)[0].unsqueeze(1)
+            target = rewards + (1 - dones) * self.gamma * next_q
+
+        loss = nn.functional.mse_loss(q_values, target)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        self.update_target_network()
+        self.steps += 1
+        return loss.item()
+
+    def save(self, path):
+        torch.save(self.q_net.state_dict(), path)
+
+    def load(self, path):
+        self.q_net.load_state_dict(torch.load(path, map_location=device))
+        self.update_target_network(hard=True)
+
+# train.py
+import os
+import argparse
+import numpy as np
+from pacman_env import PacmanEnv
+from dqn_agent import DQNAgent
+import torch
+import random
+
+def train(
+    episodes=1000,
+    max_steps=1000,
+    eps_start=1.0,
+    eps_end=0.05,
+    eps_decay=0.995,
+    save_dir='models'
+):
+    env = PacmanEnv(max_steps_per_episode=max_steps, render=True)
+    obs0 = env.reset()
+    state_dim = obs0.shape[0]
+    action_dim = 5  # up,right,down,left,noop
+
+    agent = DQNAgent(state_dim, action_dim)
+    eps = eps_start
+
+    os.makedirs(save_dir, exist_ok=True)
+    best_score = -1e9
+
+    for ep in range(1, episodes+1):
+        state = env.reset()
+        total_reward = 0.0
+        for t in range(max_steps):
+            action = agent.act(state, eps)
+            next_state, reward, done, _ = env.step(action)
+            agent.store(state, action, reward, next_state, done)
+            loss = agent.learn()
+            state = next_state
+            total_reward += reward
+            if done:
+                break
+
+        eps = max(eps_end, eps * eps_decay)
+        print(f"Episode {ep} Reward {total_reward:.1f} Steps {t+1} Eps {eps:.3f} Replay {len(agent.replay)}")
+
+        # Save model occasionally
+        if ep % 20 == 0:
+            path = os.path.join(save_dir, f"dqn_ep{ep}.pt")
+            agent.save(path)
+
+        # Best model save
+        if total_reward > best_score:
+            best_score = total_reward
+            agent.save(os.path.join(save_dir, "dqn_best.pt"))
+
+    env.close()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--episodes", type=int, default=500)
+    args = parser.parse_args()
+    train(episodes=args.episodes)
+
+    #!/usr/bin/env bash
+set -e
+sudo apt update
+sudo apt install -y python3-pip python3-dev libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev
+pip3 install --upgrade pip
+pip3 install numpy pygame torch torchvision tensorboard
+# Hinweis: PyTorch CPU build auf Raspberry Pi kann trickreich sein; alternativ trainiere auf PC und
+# kopiere das Modell nach /home/pi/pacman/models/
+echo "Setup fertig. Wenn torch Probleme macht, trainiere bitte auf einem PC und kopiere Modelldateien."
+
+while running:
+    for event in pygame.event.get():
+        # input handling...
+    # update positions
+    # draw
+    pygame.display.flip()
+    clock.tick(FPS)
